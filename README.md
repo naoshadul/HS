@@ -22,6 +22,6 @@ If you see something not planned, that you want, make an [issue](https://github.
 - [x] Owners
 - [x] Page Publishing (COS) :new:
 - [x] Social Media
-- [ ] Templates (COS) :new:
+- [x] Templates (COS) :new:
 - [x] Timeline :new:
 - [x] Workflows
