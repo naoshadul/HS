@@ -1,7 +1,7 @@
 <?php
-namespace SevenShores\Hubspot\Resources;
+namespace naoshadul\Hubspot\Resources;
 
-use SevenShores\Hubspot\Exceptions\HubspotException;
+use naoshadul\Hubspot\Exceptions\HubspotException;
 
 class Deals extends Resource
 {
@@ -39,7 +39,7 @@ class Deals extends Resource
      * @see https://developers.hubspot.com/docs/methods/deals/batch-update-deals
      *
      * @param array $deals The deals and properties.
-     * @return \SevenShores\Hubspot\Http\Response
+     * @return \naoshadul\Hubspot\Http\Response
      */
     function updateBatch(array $deals)
     {
@@ -53,8 +53,8 @@ class Deals extends Resource
     /**
      * @param array $params
      *
-     * @return \Psr\Http\Message\ResponseInterface|\SevenShores\Hubspot\Http\Response
-     * @throws \SevenShores\Hubspot\Exceptions\BadRequest
+     * @return \Psr\Http\Message\ResponseInterface|\naoshadul\Hubspot\Http\Response
+     * @throws \naoshadul\Hubspot\Exceptions\BadRequest
      */
     function getAll(array $params = []){
         $endpoint = "https://api.hubapi.com/deals/v1/deal/paged";
@@ -185,7 +185,7 @@ class Deals extends Resource
      * @param string $objectType
      * @param int $objectId
      * @param array $params
-     * @return \Psr\Http\Message\ResponseInterface|\SevenShores\Hubspot\Http\Response
+     * @return \Psr\Http\Message\ResponseInterface|\naoshadul\Hubspot\Http\Response
      *
      * @see https://developers.hubspot.com/docs/methods/deals/get-associated-deals
      */
