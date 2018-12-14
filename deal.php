@@ -1,200 +1,350 @@
 <?php
-namespace naoshadul\Hubspot\Resources;
+namespace Naoshadul\Hubspot\Tests\Integration\Resources;
 
-use naoshadul\Hubspot\Exceptions\HubspotException;
+use Naoshadul\Hubspot\Resources\Companies;
+use Naoshadul\Hubspot\Resources\Contacts;
+use Naoshadul\Hubspot\Resources\Deals;
+use Naoshadul\Hubspot\Http\Client;
 
-class Deals extends Resource
+/**
+ * Class DealsTest
+ * @package Naoshadul\Hubspot\Tests\Integration\Resources
+ * @group deals
+ */
+class DealsTest extends \PHPUnit_Framework_TestCase
 {
     /**
-     * @param array $deal Array of deal properties.
-     * @return mixed
-     * @throws HubSpotException
+     * @var Deals
      */
-    function create(array $deal)
+    private $deals;
+
+    public function setUp()
     {
-        $endpoint = "https://api.hubapi.com/deals/v1/deal";
+        parent::setUp();
+        $this->deals = new Deals(new Client(['key' => 'demo']));
+        sleep(1);
+    }
 
-        $options['json'] = $deal;
+    /*
+     * Lots of tests need an existing object to modify.
+     */
+    private function createDeal()
+    {
+        sleep(1);
 
-        return $this->client->request('post', $endpoint, $options);
+        $response = $this->deals->create([
+            "properties" => [
+                [
+                    "value" => "Cool Deal",
+                    "name" => "dealname"
+                ],
+                [
+                    "value" => "60000",
+                    "name" => "amount"
+                ],
+            ]
+        ]);
+
+        return $response;
     }
 
     /**
-     * @param int $id The deal id.
-     * @param array $deal The deal properties to update.
-     * @return mixed
+     * @return int
      */
-    function update($id, array $deal)
+    private function createCompany()
     {
-        $endpoint = "https://api.hubapi.com/deals/v1/deal/{$id}";
+        $companies = new Companies(new Client(['key' => 'demo']));
 
-        $options['json'] = $deal;
+        return $companies->create(['name' => 'name', 'value' => 'dl_test_company'.uniqid()])->companyId;
+    }
 
-        return $this->client->request('put', $endpoint, $options);
+    private function createContact()
+    {
+        $contacts = new Contacts(new Client(['key' => 'demo']));
+
+        $response = $contacts->create([
+            ['property' => 'email', 'value' => 'dl_test_contact'.uniqid().'@hubspot.com']
+        ]);
+
+        return $response->vid;
     }
 
     /**
-     * Update a group of existing deal records by their dealId.
-     *
-     * @see https://developers.hubspot.com/docs/methods/deals/batch-update-deals
-     *
-     * @param array $deals The deals and properties.
-     * @return \naoshadul\Hubspot\Http\Response
+     * @test
      */
-    function updateBatch(array $deals)
+    public function create()
     {
-        $endpoint = "https://api.hubapi.com/deals/v1/batch-async/update";
+        $response = $this->createDeal();
 
-        $options['json'] = $deals;
-
-        return $this->client->request('post', $endpoint, $options);
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertSame('Cool Deal', $response['properties']['dealname']['value']);
+        $this->assertSame('60000', $response['properties']['amount']['value']);
     }
 
     /**
-     * @param array $params
-     *
-     * @return \Psr\Http\Message\ResponseInterface|\naoshadul\Hubspot\Http\Response
-     * @throws \naoshadul\Hubspot\Exceptions\BadRequest
+     * @test
      */
-    function getAll(array $params = []){
-        $endpoint = "https://api.hubapi.com/deals/v1/deal/paged";
+    public function find()
+    {
+        $response = $this->createDeal();
+        $id = $response['dealId'];
 
-        $queryString = build_query_string($params);
+        //Should not be able to find a deal after it was deleted
+        $response = $this->deals->getById($id);
 
-        return $this->client->request('get', $endpoint, [], $queryString);
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertSame('Cool Deal', $response['properties']['dealname']['value']);
+        $this->assertSame('60000', $response['properties']['amount']['value']);
+    }
+
+    /**
+     * @test
+     */
+    public function update()
+    {
+        $response = $this->createDeal();
+
+        $id = $response->dealId;
+
+        $response = $this->deals->update($id, [
+            "properties" => [
+                [
+                    "name"  => "amount",
+                    "value" => "70000",
+                ],
+            ],
+        ]);
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertSame('70000', $response['properties']['amount']['value']);
+    }
+
+    /**
+     * @test
+     */
+    public function updateBatch()
+    {
+        $deal1 = $this->createDeal();
+        $deal2 = $this->createDeal();
+
+        $response = $this->deals->updateBatch([
+            [
+                'objectId' => $deal1->dealId,
+                'properties' => [
+                    ['name' => 'dealname', 'value'  => 'Even cooler Deal'],
+                    ['name' => 'amount', 'value' => '59999' ],
+                ],
+            ],
+            [
+                'objectId' => $deal2->dealId,
+                'properties' => [
+                    ['name' => 'dealname', 'value'  => 'Still ok Deal'],
+                ],
+            ]
+        ]);
+
+        $this->assertEquals(202, $response->getStatusCode());
+
+        $response = $this->deals->getById($deal1->dealId);
+        $this->assertSame('Even cooler Deal', $response['properties']['dealname']['value']);
+        $this->assertSame('59999', $response['properties']['amount']['value']);
+
+        $response = $this->deals->getById($deal2->dealId);
+        $this->assertSame('Still ok Deal', $response['properties']['dealname']['value']);
+    }
+
+    /**
+     * @test
+     */
+    public function delete()
+    {
+        $response = $this->createDeal();
+        $id = $response['dealId'];
+
+        $response = $this->deals->delete($id);
+        $this->assertEquals(204, $response->getStatusCode());
+
+        //Should not be able to find a deal after it was deleted
+        $response = $this->deals->getById($id);
+        $this->assertEquals(404, $response->getStatusCode());
+    }
+
+    /**
+     * @test
+     */
+    public function recentlyCreated()
+    {
+        //Create 4 deals
+        for ($i=1; $i<=4; ++$i) {
+            $this->createDeal();
+        }
+
+        $response = $this->deals->getRecentlyCreated([
+            'offset' => 1,
+            'count' => 3,
+        ]);
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertSame(3, count($response['results']));
     }
 
 
     /**
-     * @param int $id
-     * @return mixed
+     * @getAll
      */
-    function delete($id)
+    public function getAll()
     {
-        $endpoint = "https://api.hubapi.com/deals/v1/deal/{$id}";
+        $response = $this->deals->getAll([
+            'offset' => 1,
+            'count' => 2,
+        ]);
 
-        return $this->client->request('delete', $endpoint);
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertSame(2, count($response['results']));
+    }
+
+
+    /**
+     * @test
+     */
+    public function recentlyModified()
+    {
+        $response = $this->deals->getRecentlyModified([
+            'offset' => 1,
+            'count' => 2,
+        ]);
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertSame(2, count($response['results']));
     }
 
     /**
-     * @param array $params Optional parameters ['limit', 'offset']
-     * @return mixed
+     * @group now
      */
-    function getRecentlyModified(array $params = [])
+    public function associateWithCompany()
     {
-        $endpoint = "https://api.hubapi.com/deals/v1/deal/recent/modified";
-        $queryString = build_query_string($params);
+        $dealId = $this->createDeal()->dealId;
 
-        return $this->client->request('get', $endpoint, [], $queryString);
+        $firstCompanyId = $this->createCompany();
+        $secondCompanyId = $this->createCompany();
+        $thirdCompanyId = $this->createCompany();
+
+        $response = $this->deals->associateWithCompany($dealId, [
+            $firstCompanyId,
+            $secondCompanyId,
+            $thirdCompanyId
+        ]);
+        $this->assertSame(204, $response->getStatusCode());
+
+        //Check what was associated
+        $response = $this->deals->getById($dealId);
+
+        $associatedCompanies = $response->associations->associatedCompanyIds;
+        $expectedAssociatedCompanies = [$firstCompanyId, $secondCompanyId, $thirdCompanyId];
+
+        //sorting as order is not predicatable
+        sort($associatedCompanies);
+        sort($expectedAssociatedCompanies);
+
+        $this->assertEquals($expectedAssociatedCompanies, $associatedCompanies);
+
+        //Now disassociate
+        $response = $this->deals->disassociateFromCompany($dealId, [
+            $firstCompanyId,
+            $thirdCompanyId,
+        ]);
+        $this->assertSame(204, $response->getStatusCode());
+
+        //Ensure that only one associated company left
+        $response = $this->deals->getById($dealId);
+        $this->assertSame([$secondCompanyId], $response->associations->associatedCompanyIds);
     }
 
     /**
-     * @param array $params Optional parameters ['limit', 'offset']
-     * @return mixed
+     * @test
      */
-    function getRecentlyCreated(array $params = [])
+    public function associateWithContact()
     {
-        $endpoint = "https://api.hubapi.com/deals/v1/deal/recent/created";
-        $queryString = build_query_string($params);
+        $dealId = $this->createDeal()->dealId;
 
-        return $this->client->request('get', $endpoint, [], $queryString);
+        $firstContactId = $this->createContact();
+        $secondContactId = $this->createContact();
+        $thirdContactId = $this->createContact();
+
+        $response = $this->deals->associateWithContact($dealId, [
+            $firstContactId,
+            $secondContactId,
+            $thirdContactId
+        ]);
+        $this->assertSame(204, $response->getStatusCode());
+
+        //Check what was associated
+        $response = $this->deals->getById($dealId);
+
+        $associatedContacts = $response->associations->associatedVids;
+        $expectedAssociatedContacts = [$firstContactId, $secondContactId, $thirdContactId];
+
+        //sorting as order is not predicatable
+        sort($associatedContacts);
+        sort($expectedAssociatedContacts);
+
+        $this->assertEquals($expectedAssociatedContacts, $associatedContacts);
+
+        //Now disassociate
+        $response = $this->deals->disassociateFromContact($dealId, [
+            $firstContactId,
+            $thirdContactId,
+        ]);
+        $this->assertSame(204, $response->getStatusCode());
+
+        //Ensure that only one associated contact left
+        $response = $this->deals->getById($dealId);
+        $this->assertSame([$secondContactId], $response->associations->associatedVids);
     }
 
     /**
-     * @param int $id
-     * @return mixed
+     * @test
      */
-    function getById($id)
+    public function getAssociatedDealsByCompany()
     {
-        $endpoint = "https://api.hubapi.com/deals/v1/deal/{$id}";
+        $companyId = $this->createCompany();
 
-        return $this->client->request('get', $endpoint);
+        $firstDeal = $this->createDeal()->dealId;
+        $secondDeal = $this->createDeal()->dealId;
+
+        $this->deals->associateWithCompany($firstDeal, [
+            $companyId
+        ]);
+        $this->deals->associateWithCompany($secondDeal, [
+            $companyId
+        ]);
+
+        $response = $this->deals->getAssociatedDeals('company', $companyId);
+        $this->assertCount(2, $response->deals);
     }
 
     /**
-     * @param int $dealId
-     * @param int|int[] $companyIds
-     * @return mixed
+     * @test
      */
-    function associateWithCompany($dealId, $companyIds)
+    public function getAssociatedDealsByContact()
     {
-        $endpoint = "https://api.hubapi.com/deals/v1/deal/{$dealId}/associations/COMPANY";
+        $contactId = $this->createContact();
 
-        $queryString = build_query_string(['id' => (array)$companyIds]);
+        $firstDeal = $this->createDeal()->dealId;
+        $secondDeal = $this->createDeal()->dealId;
+        $thirdDeal = $this->createDeal()->dealId;
 
-        return $this->client->request('put', $endpoint, [], $queryString);
-    }
+        $this->deals->associateWithContact($firstDeal, [
+            $contactId
+        ]);
+        $this->deals->associateWithContact($secondDeal, [
+            $contactId
+        ]);
+        $this->deals->associateWithContact($thirdDeal, [
+            $contactId
+        ]);
 
-    /**
-     * @param int $dealId
-     * @param int|int[] $companyIds
-     * @return mixed
-     */
-    function disassociateFromCompany($dealId, $companyIds)
-    {
-        $endpoint = "https://api.hubapi.com/deals/v1/deal/{$dealId}/associations/COMPANY";
-
-        $queryString = build_query_string(['id' => (array)$companyIds]);
-
-        return $this->client->request('delete', $endpoint, [], $queryString);
-    }
-
-    /**
-     * @param int $dealId
-     * @param int|int[] $contactIds
-     * @return mixed
-     */
-    function associateWithContact($dealId, $contactIds)
-    {
-        $endpoint = "https://api.hubapi.com/deals/v1/deal/{$dealId}/associations/CONTACT";
-
-        $queryString = build_query_string(['id' => (array)$contactIds]);
-
-        return $this->client->request('put', $endpoint, [], $queryString);
-    }
-
-    /**
-     * @param int $contactId
-     * @param array $params Optional parameters ['limit', 'offset']
-     * @return mixed
-     */
-    function associatedWithContact($contactId, $params = [])
-    {
-        $endpoint = "https://api.hubapi.com/deals/v1/deal/associated/contact/{$contactId}/paged";
-
-        $queryString = build_query_string($params);
-
-        return $this->client->request('get', $endpoint, [], $queryString);
-    }
-
-    /**
-     * @param int $dealId
-     * @param int|int[] $contactIds
-     * @return mixed
-     */
-    function disassociateFromContact($dealId, $contactIds)
-    {
-        $endpoint = "https://api.hubapi.com/deals/v1/deal/{$dealId}/associations/CONTACT";
-
-        $queryString = build_query_string(['id' => (array)$contactIds]);
-
-        return $this->client->request('delete', $endpoint, [], $queryString);
-    }
-
-    /**
-     * @param string $objectType
-     * @param int $objectId
-     * @param array $params
-     * @return \Psr\Http\Message\ResponseInterface|\naoshadul\Hubspot\Http\Response
-     *
-     * @see https://developers.hubspot.com/docs/methods/deals/get-associated-deals
-     */
-    public function getAssociatedDeals($objectType, $objectId, $params = [])
-    {
-        $endpoint = "https://api.hubapi.com/deals/v1/deal/associated/{$objectType}/{$objectId}/paged";
-
-        $queryString = build_query_string($params);
-
-        return $this->client->request('get', $endpoint, [], $queryString);
+        $response = $this->deals->getAssociatedDeals('contact', $contactId);
+        $this->assertCount(3, $response->deals);
     }
 }
